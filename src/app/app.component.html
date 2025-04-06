@@ -1,0 +1,12 @@
+<main class="main">
+  <div class="difficulty-list">
+    <button nz-button [nzType]="activeDifficulty === 'easy' ? 'primary' : 'default'" (click)="setDifficulty('easy')">简单</button>
+    <button nz-button [nzType]="activeDifficulty === 'medium' ? 'primary' : 'default'" (click)="setDifficulty('medium')">中等</button>
+    <button nz-button [nzType]="activeDifficulty === 'hard' ? 'primary' : 'default'" (click)="setDifficulty('hard')">困难</button>
+    <button nz-button [nzType]="activeDifficulty === 'expert' ? 'primary' : 'default'" (click)="setDifficulty('expert')">专家</button>
+    <button nz-button [nzType]="activeDifficulty === 'master' ? 'primary' : 'default'" (click)="setDifficulty('master')">大师</button>
+  </div>
+  <div class="puzzle-board">
+    <canvas #puzzleCanvas width="960" height="640"></canvas>
+  </div>
+</main>

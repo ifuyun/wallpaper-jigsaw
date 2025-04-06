@@ -1,0 +1,76 @@
+{
+  "name": "wallpaper-jigsaw",
+  "version": "0.0.1",
+  "description": "An interactive jigsaw puzzle game, supporting multiple difficulty levels and customizable puzzle parameters",
+  "keywords": [
+    "jigsaw",
+    "jigsaw puzzle",
+    "wallpaper puzzle",
+    "wallpaper jigsaw",
+    "puzzle game",
+    "canvas",
+    "HTML5 puzzle",
+    "HTML5 jigsaw"
+  ],
+  "homepage": "https://github.com/ifuyun/wallpaper-jigsaw",
+  "bugs": {
+    "url": "https://github.com/ifuyun/wallpaper-jigsaw/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Fuyun",
+    "url": "https://www.ifuyun.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ifuyun/wallpaper-jigsaw.git"
+  },
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/cdk": "^19.2.7",
+    "@angular/common": "^19.2.0",
+    "@angular/compiler": "^19.2.0",
+    "@angular/core": "^19.2.0",
+    "@angular/forms": "^19.2.0",
+    "@angular/platform-browser": "^19.2.0",
+    "@angular/platform-browser-dynamic": "^19.2.0",
+    "@angular/router": "^19.2.0",
+    "ng-zorro-antd": "^19.2.1",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^19.2.5",
+    "@angular/cli": "^19.2.5",
+    "@angular/compiler-cli": "^19.2.0",
+    "@types/jasmine": "~5.1.0",
+    "jasmine-core": "~5.6.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "prettier": "^3.5.3",
+    "typescript": "~5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Edge versions",
+    "last 2 Safari versions",
+    "iOS >= 15",
+    "not IE 11"
+  ]
+}
