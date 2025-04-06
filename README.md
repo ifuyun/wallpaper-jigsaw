@@ -80,5 +80,5 @@ Issues and feature requests are welcome. If you want to contribute code, please 
 
 If you have any questions or suggestions, please contact:
 
-- 网站: [https://www.ifuyun.com/](https://www.ifuyun.com/)
+- Website: [https://www.ifuyun.com/](https://www.ifuyun.com/)
 - GitHub: [ifuyun](https://github.com/ifuyun)
