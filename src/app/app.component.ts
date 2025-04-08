@@ -1,18 +1,24 @@
 import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
-import { NzButtonModule } from 'ng-zorro-antd/button';
+import { FormsModule } from '@angular/forms';
+import { shuffle } from 'lodash';
 import { NzMessageService } from 'ng-zorro-antd/message';
+import { NzRadioModule } from 'ng-zorro-antd/radio';
+import { JigsawDifficulty } from './interfaces/jigsaw.interface';
 import { JigsawService } from './services/jigsaw.service';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, NzButtonModule],
+  imports: [CommonModule, FormsModule, NzRadioModule],
   templateUrl: './app.component.html',
   styleUrl: './app.component.less'
 })
 export class AppComponent implements OnInit, AfterViewInit {
   @ViewChild('puzzleCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
+  // 画布尺寸
+  canvasWidth: number = 1200;
+  canvasHeight: number = 800;
   // 定义难度级别
   difficultyLevels = {
     master: { rows: 20, cols: 30 },
@@ -22,7 +28,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     easy: { rows: 6, cols: 9 }
   };
   // 当前难度级别
-  activeDifficulty: 'master' | 'expert' | 'hard' | 'medium' | 'easy' = 'medium';
+  activeDifficulty: JigsawDifficulty = 'medium';
 
   // 拼图块数组
   private puzzlePieces: any[] = [];
@@ -40,6 +46,9 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 拼图拼接相关
   private snapThreshold: number = 16; // 吸附阈值（像素）
   private connectedGroups: any[][] = []; // 已连接的拼图块组
+  // 拼图尺寸
+  private puzzleWidth: number = 960;
+  private puzzleHeight: number = 640;
 
   constructor(
     private jigsawService: JigsawService,
@@ -59,7 +68,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   // 切换难度级别
-  setDifficulty(difficulty: 'master' | 'expert' | 'hard' | 'medium' | 'easy') {
+  setDifficulty(difficulty: JigsawDifficulty) {
     this.activeDifficulty = difficulty;
 
     if (this.originalImage) {
@@ -155,13 +164,16 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.jigsawService.setJitter(this.jitter);
 
     // 使用JigsawService生成拼图块
-    this.puzzlePieces = this.jigsawService.generatePuzzlePieces(canvas.width, canvas.height, rows, cols);
-
-    // 为每个拼图块添加唯一ID和连接状态
-    this.puzzlePieces.forEach((piece, index) => {
-      piece.id = index;
-      piece.groupId = index; // 初始时每个拼图块自成一组
-    });
+    this.puzzlePieces = shuffle(
+      this.jigsawService.generatePuzzlePieces(
+        this.canvasWidth,
+        this.canvasHeight,
+        this.puzzleWidth,
+        this.puzzleHeight,
+        rows,
+        cols
+      )
+    );
 
     // 重置连接组
     this.connectedGroups = [];
@@ -280,6 +292,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 处理触摸开始事件
   private handleTouchStart(e: TouchEvent) {
     e.preventDefault();
+
     const canvas = this.canvasRef.nativeElement;
     const rect = canvas.getBoundingClientRect();
     const touch = e.touches[0];
@@ -292,6 +305,7 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 处理触摸移动事件
   private handleTouchMove(e: TouchEvent) {
     e.preventDefault();
+
     if (!this.isDragging || !this.selectedPiece) {
       return;
     }
@@ -328,7 +342,9 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // 拖动拼图块
   private dragPiece(x: number, y: number) {
-    if (!this.isDragging || !this.selectedPiece) return;
+    if (!this.isDragging || !this.selectedPiece) {
+      return;
+    }
 
     const canvas = this.canvasRef.nativeElement;
     const ctx = canvas.getContext('2d');
@@ -382,12 +398,14 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // 检查是否可以与其他拼图块拼接
   private checkForSnapping(movingPieces: any[]) {
-    if (!movingPieces.length) return;
+    if (!movingPieces.length) {
+      return;
+    }
 
     // 获取当前难度级别的行列数
     const { rows, cols } = this.difficultyLevels[this.activeDifficulty];
-    const pieceWidth = this.canvasRef.nativeElement.width / cols;
-    const pieceHeight = this.canvasRef.nativeElement.height / rows;
+    const pieceWidth = this.puzzleWidth / cols;
+    const pieceHeight = this.puzzleHeight / rows;
 
     // 遍历所有拼图块，检查是否可以拼接
     const movingIds = movingPieces.map((p) => p.id);
@@ -395,7 +413,9 @@ export class AppComponent implements OnInit, AfterViewInit {
     for (const movingPiece of movingPieces) {
       for (const piece of this.puzzlePieces) {
         // 跳过同一组的拼图块
-        if (movingIds.includes(piece.id)) continue;
+        if (movingIds.includes(piece.id)) {
+          continue;
+        }
 
         // 检查是否是相邻的拼图块
         const isHorizontalNeighbor = Math.abs(movingPiece.col - piece.col) === 1 && movingPiece.row === piece.row;
@@ -510,9 +530,9 @@ export class AppComponent implements OnInit, AfterViewInit {
     // 从后向前检查（后绘制的在上层）
     for (let i = this.puzzlePieces.length - 1; i >= 0; i--) {
       const piece = this.puzzlePieces[i];
-
       // 创建路径并检查点是否在路径内
       const path = new Path2D(piece.path);
+
       if (ctx.isPointInPath(path, x + piece.x - piece.displayX, y + piece.y - piece.displayY)) {
         // 将选中的拼图块及其所在组移到数组末尾（显示在最上层）
         const group = this.findConnectedGroup(piece);

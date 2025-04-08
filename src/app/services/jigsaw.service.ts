@@ -71,9 +71,9 @@ export class JigsawService {
   }
 
   next(): void {
-    const flipold = this.flip;
+    const lastFlip = this.flip;
     this.flip = this.rbool();
-    this.a = this.flip == flipold ? -this.e : this.e;
+    this.a = this.flip == lastFlip ? -this.e : this.e;
     this.b = this.uniform(-this.j, this.j);
     this.c = this.uniform(-this.j, this.j);
     this.d = this.uniform(-this.j, this.j);
@@ -297,9 +297,16 @@ export class JigsawService {
   }
 
   // 生成拼图块路径
-  generatePuzzlePieces(canvasWidth: number, canvasHeight: number, rows: number, cols: number): JigsawPiece[] {
+  generatePuzzlePieces(
+    canvasWidth: number,
+    canvasHeight: number,
+    puzzleWidth: number,
+    puzzleHeight: number,
+    rows: number,
+    cols: number
+  ): JigsawPiece[] {
     // 设置尺寸和分块数量
-    this.setDimensions(canvasWidth, canvasHeight, cols, rows);
+    this.setDimensions(puzzleWidth, puzzleHeight, cols, rows);
 
     // 生成水平和垂直边缘
     this.initPieces();
@@ -308,6 +315,7 @@ export class JigsawService {
     this.generateBorderEdges();
 
     const pieces: any[] = [];
+    let index = 0;
 
     // 生成拼图块
     for (let row = 0; row < rows; row++) {
@@ -326,8 +334,12 @@ export class JigsawService {
           height: this.ph,
           displayX: Math.random() * (canvasWidth - 1.6 * this.pw) + 0.3 * this.pw,
           displayY: Math.random() * (canvasHeight - 1.6 * this.ph) + 0.3 * this.ph,
-          path: this.getPiecePath(this.pieces[row][col])
+          path: this.getPiecePath(this.pieces[row][col]),
+          id: index,
+          groupId: index // 初始时每个拼图块自成一组
         });
+
+        index += 1;
       }
     }
 
