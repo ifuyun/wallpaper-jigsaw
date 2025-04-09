@@ -1,5 +1,11 @@
 export type JigsawDifficulty = 'master' | 'expert' | 'hard' | 'medium' | 'easy';
 
+export interface JigsawDifficultyItem {
+  rows: number;
+  cols: number;
+  label: string;
+}
+
 export interface JigsawPiecePath {
   top?: string;
   right?: string;

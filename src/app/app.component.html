@@ -1,12 +1,16 @@
-<main class="main">
-  <div class="puzzle-difficulty">
-    <nz-radio-group [(ngModel)]="activeDifficulty" nzButtonStyle="solid" (ngModelChange)="setDifficulty($event)">
-      <label nz-radio-button nzValue="easy">简单</label>
-      <label nz-radio-button nzValue="medium">中等</label>
-      <label nz-radio-button nzValue="hard">困难</label>
-      <label nz-radio-button nzValue="expert">专家</label>
-      <label nz-radio-button nzValue="master">大师</label>
-    </nz-radio-group>
+<main class="puzzle">
+  <div class="puzzle-control">
+    <div class="puzzle-preview">
+      <canvas #puzzleImage [attr.width]="210" [attr.height]="140" (click)="showPuzzleImage()"></canvas>
+    </div>
+    <div class="puzzle-difficulty">
+      <label>难度: </label>
+      <nz-select [(ngModel)]="activeDifficulty" (ngModelChange)="setDifficulty($event)">
+        <nz-option *ngFor="let item of difficultyList"
+                   [nzValue]="item.name"
+                   [nzLabel]="item.label + '(' + item.rows + 'x' + item.cols + ')'"></nz-option>
+      </nz-select>
+    </div>
   </div>
   <div class="puzzle-board">
     <canvas #puzzleCanvas [attr.width]="canvasWidth" [attr.height]="canvasHeight"></canvas>

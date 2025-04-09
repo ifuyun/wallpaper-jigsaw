@@ -2,34 +2,47 @@ import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { shuffle } from 'lodash';
+import { NzImageService } from 'ng-zorro-antd/image';
 import { NzMessageService } from 'ng-zorro-antd/message';
-import { NzRadioModule } from 'ng-zorro-antd/radio';
-import { JigsawDifficulty } from './interfaces/jigsaw.interface';
+import { NzSelectModule } from 'ng-zorro-antd/select';
+import { JigsawDifficulty, JigsawDifficultyItem } from './interfaces/jigsaw.interface';
 import { JigsawService } from './services/jigsaw.service';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, NzRadioModule],
+  imports: [CommonModule, FormsModule, NzSelectModule],
+  providers: [NzImageService],
   templateUrl: './app.component.html',
   styleUrl: './app.component.less'
 })
 export class AppComponent implements OnInit, AfterViewInit {
+  @ViewChild('puzzleImage') imageRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('puzzleCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
   // 画布尺寸
-  canvasWidth: number = 1200;
-  canvasHeight: number = 800;
+  canvasWidth: number = 1152;
+  canvasHeight: number = 768;
   // 定义难度级别
-  difficultyLevels = {
-    master: { rows: 20, cols: 30 },
-    expert: { rows: 16, cols: 24 },
-    hard: { rows: 12, cols: 18 },
-    medium: { rows: 8, cols: 12 },
-    easy: { rows: 6, cols: 9 }
+  difficultyLevels: Record<JigsawDifficulty, JigsawDifficultyItem> = {
+    easy: { rows: 6, cols: 9, label: '简单' },
+    medium: { rows: 8, cols: 12, label: '中等' },
+    hard: { rows: 12, cols: 18, label: '困难' },
+    expert: { rows: 16, cols: 24, label: '专家' },
+    master: { rows: 20, cols: 30, label: '大师' }
   };
   // 当前难度级别
   activeDifficulty: JigsawDifficulty = 'medium';
+  puzzleImage = 'https://cn.bing.com/th?id=OHR.SummerSolstice2024_ZH-CN6141918663_1920x1080.jpg';
 
+  get difficultyList() {
+    return Object.entries(this.difficultyLevels).map(([name, value]) => ({
+      ...value,
+      name
+    }));
+  }
+
+  private puzzleWidth: number = 900;
+  private puzzleHeight: number = 600;
   // 拼图块数组
   private puzzlePieces: any[] = [];
   // 原始图片
@@ -47,12 +60,11 @@ export class AppComponent implements OnInit, AfterViewInit {
   private snapThreshold: number = 16; // 吸附阈值（像素）
   private connectedGroups: any[][] = []; // 已连接的拼图块组
   // 拼图尺寸
-  private puzzleWidth: number = 960;
-  private puzzleHeight: number = 640;
 
   constructor(
-    private jigsawService: JigsawService,
-    private message: NzMessageService
+    private readonly jigsawService: JigsawService,
+    private readonly message: NzMessageService,
+    private readonly imageService: NzImageService
   ) {}
 
   ngOnInit() {
@@ -65,6 +77,14 @@ export class AppComponent implements OnInit, AfterViewInit {
   ngAfterViewInit() {
     this.initCanvas();
     this.initDragEvents();
+  }
+
+  showPuzzleImage() {
+    this.imageService.preview([
+      {
+        src: this.puzzleImage
+      }
+    ]);
   }
 
   // 切换难度级别
@@ -97,20 +117,23 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   private initCanvas() {
     const canvas = this.canvasRef.nativeElement;
-    if (!canvas) {
+    const imageCanvas = this.imageRef.nativeElement;
+    if (!canvas || !imageCanvas) {
       return;
     }
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
+    const imageCtx = imageCanvas.getContext('2d');
+    if (!ctx || !imageCtx) {
       return;
     }
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = 'https://cn.bing.com/th?id=OHR.SummerSolstice2024_ZH-CN6141918663_1920x1080.jpg';
+    img.src = this.puzzleImage;
     img.onload = () => {
       this.originalImage = img;
+      this.drawPreviewImage(imageCanvas, imageCtx);
       // 切分图片为拼图块
       this.createPuzzlePieces(canvas, ctx);
     };
@@ -154,6 +177,23 @@ export class AppComponent implements OnInit, AfterViewInit {
     };
   }
 
+  private drawPreviewImage(previewCanvas: HTMLCanvasElement, previewCtx: CanvasRenderingContext2D) {
+    const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(previewCanvas);
+
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    previewCtx.drawImage(
+      this.originalImage!,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      previewCanvas.width,
+      previewCanvas.height
+    );
+  }
+
   private createPuzzlePieces(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     // 获取当前难度级别的行列数
     const { rows, cols } = this.difficultyLevels[this.activeDifficulty];
@@ -183,6 +223,8 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   private drawPuzzle(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+    const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(canvas);
+
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -190,9 +232,6 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.puzzlePieces.forEach((piece) => {
       // 保存当前绘图状态
       ctx.save();
-
-      // 计算拼图块在原始图像中的位置
-      const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(canvas);
 
       // 移动到拼图块的显示位置
       ctx.translate(-piece.x, -piece.y);
@@ -224,7 +263,7 @@ export class AppComponent implements OnInit, AfterViewInit {
       ctx.save();
       ctx.translate(-piece.x, -piece.y);
       ctx.translate(piece.displayX, piece.displayY);
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)';
       ctx.lineWidth = 1;
       ctx.stroke(path);
       ctx.restore();
