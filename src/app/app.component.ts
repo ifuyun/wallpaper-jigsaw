@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { shuffle } from 'lodash';
+import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzImageService } from 'ng-zorro-antd/image';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSelectModule } from 'ng-zorro-antd/select';
@@ -10,12 +11,12 @@ import { JigsawService } from './services/jigsaw.service';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, NzSelectModule],
+  imports: [CommonModule, FormsModule, NzSelectModule, NzButtonModule],
   providers: [NzImageService],
   templateUrl: './app.component.html',
   styleUrl: './app.component.less'
 })
-export class AppComponent implements OnInit, AfterViewInit {
+export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('puzzleImage') imageRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('puzzleCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
@@ -33,6 +34,9 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 当前难度级别
   activeDifficulty: JigsawDifficulty = 'medium';
   puzzleImage = 'https://cn.bing.com/th?id=OHR.SummerSolstice2024_ZH-CN6141918663_1920x1080.jpg';
+  // 游戏状态相关变量
+  gameStatus: 'ready' | 'playing' | 'paused' | 'completed' = 'ready';
+  gameTime: number = 0; // 游戏时间（秒）
 
   get difficultyList() {
     return Object.entries(this.difficultyLevels).map(([name, value]) => ({
@@ -41,14 +45,18 @@ export class AppComponent implements OnInit, AfterViewInit {
     }));
   }
 
+  // 原图尺寸
   private wallpaperWidth = 1920;
   private wallpaperHeight = 1080;
+  // 拼图尺寸
   private puzzleWidth: number = 900;
   private puzzleHeight: number = 600;
   // 拼图块数组
   private puzzlePieces: any[] = [];
   // 原始图片
   private originalImage: HTMLImageElement | null = null;
+  // 裁剪、缩放后的原始图片
+  private scaledImage: HTMLImageElement | null = null;
   private seed: number = Math.floor(Math.random() * 10000); // 随机种子
   // 锯齿参数
   private tabSize: number = 20; // 锯齿大小百分比 (10-30)
@@ -61,7 +69,9 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 拼图拼接相关
   private snapThreshold: number = 16; // 吸附阈值（像素）
   private connectedGroups: any[][] = []; // 已连接的拼图块组
-  // 拼图尺寸
+  // 计时器相关
+  private timerInterval: any = null; // 计时器
+  private lastTimestamp: number = 0; // 上次更新时间戳
 
   constructor(
     private readonly jigsawService: JigsawService,
@@ -74,6 +84,10 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.jigsawService.setSeed(this.seed);
     this.jigsawService.setTabSize(this.tabSize);
     this.jigsawService.setJitter(this.jitter);
+
+    // 添加页面可见性变化监听
+    document.addEventListener('visibilitychange', this.handleVisibilityChange.bind(this));
+    window.addEventListener('pagehide', this.handleVisibilityChange.bind(this));
   }
 
   ngAfterViewInit() {
@@ -81,11 +95,96 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.initDragEvents();
   }
 
+  ngOnDestroy() {
+    // 清除计时器
+    this.stopTimer();
+
+    // 移除页面可见性变化监听
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange.bind(this));
+    window.removeEventListener('pagehide', this.handleVisibilityChange.bind(this));
+  }
+
+  // 开始游戏
+  startGame() {
+    const isNewGame = this.gameStatus === 'ready';
+
+    if (isNewGame) {
+      // 重置游戏时间
+      this.gameTime = 0;
+
+      // 如果是新游戏，重新生成拼图块
+      this.renderPuzzle();
+    }
+
+    this.gameStatus = 'playing';
+
+    this.startTimer();
+  }
+
+  // 暂停游戏
+  pauseGame() {
+    if (this.gameStatus === 'playing') {
+      this.gameStatus = 'paused';
+
+      this.stopTimer();
+      // 在暂停状态下显示原始图片
+      this.drawOriginalImage(false);
+    }
+  }
+
+  // 恢复游戏
+  resumeGame() {
+    if (this.gameStatus === 'paused') {
+      this.gameStatus = 'playing';
+      this.startTimer();
+
+      // 恢复显示拼图
+      const canvas = this.canvasRef.nativeElement;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        this.drawPuzzle(canvas, ctx);
+      }
+    }
+  }
+
+  // 重新开始游戏
+  restartGame() {
+    // 重置游戏状态
+    this.gameStatus = 'ready';
+    this.gameTime = 0;
+
+    this.stopTimer();
+    // 重新生成拼图
+    this.renderPuzzle();
+    // 自动开始游戏
+    this.startGame();
+  }
+
+  // 停止游戏
+  stopGame() {
+    if (this.gameStatus === 'playing' || this.gameStatus === 'paused') {
+      // 重置游戏状态
+      this.gameStatus = 'ready';
+      this.gameTime = 0;
+
+      this.stopTimer();
+      // 显示原始图片
+      this.drawOriginalImage();
+    }
+  }
+
+  // 格式化时间显示
+  formatTime(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
   showFullImage() {
-    if (this.originalImage?.src) {
+    if (this.scaledImage?.src) {
       this.imageService.preview([
         {
-          src: this.originalImage.src
+          src: this.scaledImage.src
         }
       ]);
     }
@@ -94,14 +193,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 切换难度级别
   setDifficulty(difficulty: JigsawDifficulty) {
     this.activeDifficulty = difficulty;
-
-    if (this.originalImage) {
-      const canvas = this.canvasRef.nativeElement;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        this.createPuzzlePieces(canvas, ctx);
-      }
-    }
   }
 
   // 设置锯齿参数
@@ -110,13 +201,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.tabSize = tabSize;
     this.jitter = jitter;
 
-    if (this.originalImage) {
-      const canvas = this.canvasRef.nativeElement;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        this.createPuzzlePieces(canvas, ctx);
-      }
-    }
+    this.renderPuzzle();
   }
 
   private initCanvas() {
@@ -136,6 +221,8 @@ export class AppComponent implements OnInit, AfterViewInit {
     img.crossOrigin = 'anonymous';
     img.src = this.puzzleImage;
     img.onload = () => {
+      this.originalImage = img;
+
       // 创建一个新的画布来存储缩放后的图片
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
@@ -154,10 +241,9 @@ export class AppComponent implements OnInit, AfterViewInit {
         const scaledImg = new Image();
         scaledImg.src = tempCanvas.toDataURL();
         scaledImg.onload = () => {
-          this.originalImage = scaledImg;
+          this.scaledImage = scaledImg;
           this.drawPreviewImage(previewCanvas, previewCtx);
-          // 切分图片为拼图块
-          this.createPuzzlePieces(canvas, ctx);
+          this.drawOriginalImage();
         };
       }
     };
@@ -201,10 +287,21 @@ export class AppComponent implements OnInit, AfterViewInit {
     };
   }
 
+  private renderPuzzle() {
+    if (this.scaledImage) {
+      const canvas = this.canvasRef.nativeElement;
+      const ctx = canvas.getContext('2d');
+
+      if (ctx) {
+        this.createPuzzlePieces(canvas, ctx);
+      }
+    }
+  }
+
   private drawPreviewImage(previewCanvas: HTMLCanvasElement, previewCtx: CanvasRenderingContext2D) {
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     previewCtx.drawImage(
-      this.originalImage!,
+      this.scaledImage!,
       0,
       0,
       this.puzzleWidth,
@@ -263,7 +360,7 @@ export class AppComponent implements OnInit, AfterViewInit {
 
       // 直接绘制缩放后的图像
       ctx.drawImage(
-        this.originalImage!,
+        this.scaledImage!,
         0,
         0,
         this.puzzleWidth,
@@ -290,6 +387,43 @@ export class AppComponent implements OnInit, AfterViewInit {
     });
   }
 
+  // 在暂停状态下显示原始图片
+  private drawOriginalImage(isStopped = true) {
+    const canvas = this.canvasRef.nativeElement;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx || !this.originalImage) {
+      return;
+    }
+
+    const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(canvas);
+
+    // 清空画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 绘制原始图片
+    ctx.drawImage(
+      this.originalImage,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      this.canvasWidth,
+      this.canvasHeight
+    );
+
+    // 添加半透明遮罩和文字提示
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isStopped ? '游戏未开始' : '游戏已暂停', canvas.width / 2, canvas.height / 2);
+  }
+
   // 设置拖拽事件
   private initDragEvents() {
     const canvas = this.canvasRef.nativeElement;
@@ -307,6 +441,11 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   // 处理鼠标按下事件
   private handleMouseDown(e: MouseEvent) {
+    // 只有在游戏进行中才允许拖动拼图块
+    if (this.gameStatus !== 'playing') {
+      return;
+    }
+
     const canvas = this.canvasRef.nativeElement;
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -351,6 +490,11 @@ export class AppComponent implements OnInit, AfterViewInit {
   // 处理触摸开始事件
   private handleTouchStart(e: TouchEvent) {
     e.preventDefault();
+
+    // 只有在游戏进行中才允许拖动拼图块
+    if (this.gameStatus !== 'playing') {
+      return;
+    }
 
     const canvas = this.canvasRef.nativeElement;
     const rect = canvas.getBoundingClientRect();
@@ -397,6 +541,37 @@ export class AppComponent implements OnInit, AfterViewInit {
 
     this.isDragging = false;
     this.selectedPiece = null;
+  }
+
+  // 监听页面可见性变化
+  private handleVisibilityChange() {
+    if (document.hidden && this.gameStatus === 'playing') {
+      // 页面不可见时暂停游戏
+      this.pauseGame();
+    }
+  }
+
+  // 开始计时器
+  private startTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+
+    this.lastTimestamp = Date.now();
+    this.timerInterval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - this.lastTimestamp) / 1000);
+      this.lastTimestamp = now;
+      this.gameTime += elapsed;
+    }, 1000);
+  }
+
+  // 停止计时器
+  private stopTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
   }
 
   // 拖动拼图块
@@ -575,7 +750,12 @@ export class AppComponent implements OnInit, AfterViewInit {
 
     // 如果只有一个组且包含所有拼图块，则拼图完成
     if (this.connectedGroups.length === 1 && this.connectedGroups[0].length === totalPieces) {
-      this.message.success('恭喜！拼图完成！');
+      // 停止计时器
+      this.stopTimer();
+      // 更新游戏状态
+      this.gameStatus = 'completed';
+      // 显示成功消息
+      this.message.success(`恭喜！拼图完成！用时：${this.formatTime(this.gameTime)}`);
     }
   }
 
