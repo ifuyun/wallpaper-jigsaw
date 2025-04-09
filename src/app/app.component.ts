@@ -41,6 +41,8 @@ export class AppComponent implements OnInit, AfterViewInit {
     }));
   }
 
+  private wallpaperWidth = 1920;
+  private wallpaperHeight = 1080;
   private puzzleWidth: number = 900;
   private puzzleHeight: number = 600;
   // 拼图块数组
@@ -79,12 +81,14 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.initDragEvents();
   }
 
-  showPuzzleImage() {
-    this.imageService.preview([
-      {
-        src: this.puzzleImage
-      }
-    ]);
+  showFullImage() {
+    if (this.originalImage?.src) {
+      this.imageService.preview([
+        {
+          src: this.originalImage.src
+        }
+      ]);
+    }
   }
 
   // 切换难度级别
@@ -117,14 +121,14 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   private initCanvas() {
     const canvas = this.canvasRef.nativeElement;
-    const imageCanvas = this.imageRef.nativeElement;
-    if (!canvas || !imageCanvas) {
+    const previewCanvas = this.imageRef.nativeElement;
+    if (!canvas || !previewCanvas) {
       return;
     }
 
     const ctx = canvas.getContext('2d');
-    const imageCtx = imageCanvas.getContext('2d');
-    if (!ctx || !imageCtx) {
+    const previewCtx = previewCanvas.getContext('2d');
+    if (!ctx || !previewCtx) {
       return;
     }
 
@@ -132,10 +136,30 @@ export class AppComponent implements OnInit, AfterViewInit {
     img.crossOrigin = 'anonymous';
     img.src = this.puzzleImage;
     img.onload = () => {
-      this.originalImage = img;
-      this.drawPreviewImage(imageCanvas, imageCtx);
-      // 切分图片为拼图块
-      this.createPuzzlePieces(canvas, ctx);
+      // 创建一个新的画布来存储缩放后的图片
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+
+      // 设置临时画布的尺寸为拼图尺寸
+      tempCanvas.width = this.puzzleWidth;
+      tempCanvas.height = this.puzzleHeight;
+
+      const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(tempCanvas);
+
+      if (tempCtx) {
+        // 在临时画布上绘制缩放后的图片
+        tempCtx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, this.puzzleWidth, this.puzzleHeight);
+
+        // 创建新图片对象并保存缩放后的图片
+        const scaledImg = new Image();
+        scaledImg.src = tempCanvas.toDataURL();
+        scaledImg.onload = () => {
+          this.originalImage = scaledImg;
+          this.drawPreviewImage(previewCanvas, previewCtx);
+          // 切分图片为拼图块
+          this.createPuzzlePieces(canvas, ctx);
+        };
+      }
     };
     img.onerror = () => {
       ctx.fillStyle = '#f0f0f0';
@@ -149,8 +173,8 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   private getImageSize(canvas: HTMLCanvasElement) {
     // 计算居中裁剪的参数
-    const imgWidth = this.originalImage!.width;
-    const imgHeight = this.originalImage!.height;
+    const imgWidth = this.wallpaperWidth;
+    const imgHeight = this.wallpaperHeight;
     const imgRatio = imgWidth / imgHeight; // 16:9 = 1.78
     const canvasRatio = canvas.width / canvas.height; // 3:2 = 1.5
 
@@ -178,15 +202,13 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   private drawPreviewImage(previewCanvas: HTMLCanvasElement, previewCtx: CanvasRenderingContext2D) {
-    const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(previewCanvas);
-
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
     previewCtx.drawImage(
       this.originalImage!,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
+      0,
+      0,
+      this.puzzleWidth,
+      this.puzzleHeight,
       0,
       0,
       previewCanvas.width,
@@ -223,8 +245,6 @@ export class AppComponent implements OnInit, AfterViewInit {
   }
 
   private drawPuzzle(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
-    const { sourceWidth, sourceHeight, sourceX, sourceY } = this.getImageSize(canvas);
-
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -241,17 +261,17 @@ export class AppComponent implements OnInit, AfterViewInit {
       const path = new Path2D(piece.path);
       ctx.clip(path);
 
-      // 直接绘制原始图像的对应部分
+      // 直接绘制缩放后的图像
       ctx.drawImage(
         this.originalImage!,
-        sourceX,
-        sourceY,
-        sourceWidth,
-        sourceHeight,
         0,
         0,
-        canvas.width,
-        canvas.height
+        this.puzzleWidth,
+        this.puzzleHeight,
+        0,
+        0,
+        this.puzzleWidth,
+        this.puzzleHeight
       );
       // ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
       // ctx.fill(path);
