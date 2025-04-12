@@ -1,4 +1,5 @@
 export type JigsawDifficulty = 'master' | 'expert' | 'hard' | 'medium' | 'easy';
+export type GameStatus = 'ready' | 'playing' | 'paused' | 'completed';
 
 export interface JigsawDifficultyItem {
   rows: number;
@@ -16,6 +17,7 @@ export interface JigsawPiecePath {
 }
 
 export interface JigsawPiece {
+  id: number;
   row: number;
   col: number;
   x: number;

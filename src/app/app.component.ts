@@ -3,15 +3,16 @@ import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild } fr
 import { FormsModule } from '@angular/forms';
 import { shuffle } from 'lodash';
 import { NzButtonModule } from 'ng-zorro-antd/button';
+import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzImageService } from 'ng-zorro-antd/image';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzSelectModule } from 'ng-zorro-antd/select';
-import { JigsawDifficulty, JigsawDifficultyItem } from './interfaces/jigsaw.interface';
+import { GameStatus, JigsawDifficulty, JigsawDifficultyItem, JigsawPiece } from './interfaces/jigsaw.interface';
 import { JigsawService } from './services/jigsaw.service';
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, NzSelectModule, NzButtonModule],
+  imports: [CommonModule, FormsModule, NzSelectModule, NzButtonModule, NzIconModule],
   providers: [NzImageService],
   templateUrl: './app.component.html',
   styleUrl: './app.component.less'
@@ -21,9 +22,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('puzzleCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
   // 画布尺寸
-  canvasWidth: number = 1152;
-  canvasHeight: number = 768;
-  // 定义难度级别
+  canvasWidth = 1152;
+  canvasHeight = 768;
+  // 难度级别
   difficultyLevels: Record<JigsawDifficulty, JigsawDifficultyItem> = {
     easy: { rows: 6, cols: 9, label: '简单' },
     medium: { rows: 8, cols: 12, label: '中等' },
@@ -34,9 +35,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   // 当前难度级别
   activeDifficulty: JigsawDifficulty = 'medium';
   puzzleImage = 'https://cn.bing.com/th?id=OHR.SummerSolstice2024_ZH-CN6141918663_1920x1080.jpg';
-  // 游戏状态相关变量
-  gameStatus: 'ready' | 'playing' | 'paused' | 'completed' = 'ready';
-  gameTime: number = 0; // 游戏时间（秒）
+  // 游戏状态相关
+  gameStatus: GameStatus = 'ready';
+  gameTime = 0; // 游戏时间（秒）
 
   get difficultyList() {
     return Object.entries(this.difficultyLevels).map(([name, value]) => ({
@@ -49,29 +50,38 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   private wallpaperWidth = 1920;
   private wallpaperHeight = 1080;
   // 拼图尺寸
-  private puzzleWidth: number = 900;
-  private puzzleHeight: number = 600;
+  private puzzleWidth = 900;
+  private puzzleHeight = 600;
   // 拼图块数组
-  private puzzlePieces: any[] = [];
+  private puzzlePieces: JigsawPiece[] = [];
   // 原始图片
   private originalImage: HTMLImageElement | null = null;
   // 裁剪、缩放后的原始图片
   private scaledImage: HTMLImageElement | null = null;
-  private seed: number = Math.floor(Math.random() * 10000); // 随机种子
+  private seed = Math.floor(Math.random() * 10000); // 随机种子
   // 锯齿参数
-  private tabSize: number = 20; // 锯齿大小百分比 (10-30)
-  private jitter: number = 4; // 锯齿抖动百分比 (0-13)
-  // 拖拽相关变量
-  private isDragging: boolean = false;
-  private selectedPiece: any = null;
-  private dragOffsetX: number = 0;
-  private dragOffsetY: number = 0;
+  private tabSize = 20; // 锯齿大小百分比 (10-30)
+  private jitter = 4; // 锯齿抖动百分比 (0-13)
+  // 拖拽相关
+  private isDragging = false;
+  private selectedPiece: JigsawPiece | null = null;
+  private dragOffsetX = 0;
+  private dragOffsetY = 0;
+  // 画布拖拽相关
+  private isCanvasDragging = false;
+  private lastDragX = 0;
+  private lastDragY = 0;
   // 拼图拼接相关
-  private snapThreshold: number = 16; // 吸附阈值（像素）
-  private connectedGroups: any[][] = []; // 已连接的拼图块组
+  private snapThreshold = 16; // 吸附阈值（像素）
+  private connectedGroups: JigsawPiece[][] = []; // 已连接的拼图块组
   // 计时器相关
-  private timerInterval: any = null; // 计时器
-  private lastTimestamp: number = 0; // 上次更新时间戳
+  private timerInterval: number | null = null; // 计时器
+  private lastTimestamp = 0; // 上次更新时间戳
+  // 缩放相关
+  private zoomScale = 1; // 累积缩放比例
+  private zoomStep = 0.1; // 每次缩放步长
+  private minZoom = Math.pow(1 / (1 + this.zoomStep), 7); // 最小缩放比例
+  private maxZoom = Math.pow(1 + this.zoomStep, 7); // 最大缩放比例
 
   constructor(
     private readonly jigsawService: JigsawService,
@@ -113,11 +123,10 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       this.gameTime = 0;
 
       // 如果是新游戏，重新生成拼图块
-      this.renderPuzzle();
+      this.initPuzzle();
     }
 
     this.gameStatus = 'playing';
-
     this.startTimer();
   }
 
@@ -136,14 +145,10 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   resumeGame() {
     if (this.gameStatus === 'paused') {
       this.gameStatus = 'playing';
-      this.startTimer();
 
+      this.startTimer();
       // 恢复显示拼图
-      const canvas = this.canvasRef.nativeElement;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        this.drawPuzzle(canvas, ctx);
-      }
+      this.renderPuzzle();
     }
   }
 
@@ -152,10 +157,11 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // 重置游戏状态
     this.gameStatus = 'ready';
     this.gameTime = 0;
+    this.zoomScale = 1;
 
     this.stopTimer();
     // 重新生成拼图
-    this.renderPuzzle();
+    this.initPuzzle();
     // 自动开始游戏
     this.startGame();
   }
@@ -166,6 +172,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       // 重置游戏状态
       this.gameStatus = 'ready';
       this.gameTime = 0;
+      this.zoomScale = 1;
 
       this.stopTimer();
       // 显示原始图片
@@ -173,11 +180,20 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // 格式化时间显示
-  formatTime(seconds: number): string {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  zoom(isZoomIn = true) {
+    if (this.gameStatus !== 'playing') {
+      return;
+    }
+    if ((isZoomIn && this.zoomScale >= this.maxZoom) || (!isZoomIn && this.zoomScale <= this.minZoom)) {
+      return;
+    }
+
+    const zoomChange = isZoomIn ? 1 + this.zoomStep : 1 / (1 + this.zoomStep);
+
+    this.zoomScale = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoomScale * zoomChange));
+
+    // 重绘拼图
+    this.renderPuzzle();
   }
 
   showFullImage() {
@@ -201,7 +217,45 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.tabSize = tabSize;
     this.jitter = jitter;
 
-    this.renderPuzzle();
+    this.initPuzzle();
+  }
+
+  // 格式化时间显示
+  formatTime(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  private getImageSize(canvas: HTMLCanvasElement) {
+    // 计算居中裁剪的参数
+    const imgWidth = this.wallpaperWidth;
+    const imgHeight = this.wallpaperHeight;
+    const imgRatio = imgWidth / imgHeight; // 16:9 = 1.78
+    const canvasRatio = canvas.width / canvas.height; // 3:2 = 1.5
+
+    let sourceX = 0;
+    let sourceY = 0;
+    let sourceWidth = imgWidth;
+    let sourceHeight = imgHeight;
+
+    if (imgRatio > canvasRatio) {
+      // 如果图片比例大于画布比例，需要裁剪图片宽度
+      sourceWidth = imgHeight * canvasRatio;
+      sourceX = (imgWidth - sourceWidth) / 2;
+    } else {
+      // 如果图片比例小于画布比例，需要裁剪图片高度
+      sourceHeight = imgWidth / canvasRatio;
+      sourceY = (imgHeight - sourceHeight) / 2;
+    }
+
+    return {
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight
+    };
   }
 
   private initCanvas() {
@@ -257,63 +311,36 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     };
   }
 
-  private getImageSize(canvas: HTMLCanvasElement) {
-    // 计算居中裁剪的参数
-    const imgWidth = this.wallpaperWidth;
-    const imgHeight = this.wallpaperHeight;
-    const imgRatio = imgWidth / imgHeight; // 16:9 = 1.78
-    const canvasRatio = canvas.width / canvas.height; // 3:2 = 1.5
+  // 设置拖拽事件
+  private initDragEvents() {
+    const canvas = this.canvasRef.nativeElement;
 
-    let sourceX = 0;
-    let sourceY = 0;
-    let sourceWidth = imgWidth;
-    let sourceHeight = imgHeight;
+    canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+    canvas.addEventListener('mouseleave', this.handleMouseUp.bind(this));
 
-    if (imgRatio > canvasRatio) {
-      // 如果图片比例大于画布比例，需要裁剪图片宽度
-      sourceWidth = imgHeight * canvasRatio;
-      sourceX = (imgWidth - sourceWidth) / 2;
-    } else {
-      // 如果图片比例小于画布比例，需要裁剪图片高度
-      sourceHeight = imgWidth / canvasRatio;
-      sourceY = (imgHeight - sourceHeight) / 2;
-    }
+    // 触摸事件支持
+    canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
+    canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
+    canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
 
-    return {
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight
-    };
+    // 添加鼠标滚轮事件监听
+    canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
   }
 
-  private renderPuzzle() {
+  private initPuzzle() {
     if (this.scaledImage) {
       const canvas = this.canvasRef.nativeElement;
       const ctx = canvas.getContext('2d');
 
       if (ctx) {
-        this.createPuzzlePieces(canvas, ctx);
+        this.createPuzzle(canvas, ctx);
       }
     }
   }
 
-  private drawPreviewImage(previewCanvas: HTMLCanvasElement, previewCtx: CanvasRenderingContext2D) {
-    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-    previewCtx.drawImage(
-      this.scaledImage!,
-      0,
-      0,
-      this.puzzleWidth,
-      this.puzzleHeight,
-      0,
-      0,
-      previewCanvas.width,
-      previewCanvas.height
-    );
-  }
-
-  private createPuzzlePieces(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+  private createPuzzle(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
     // 获取当前难度级别的行列数
     const { rows, cols } = this.difficultyLevels[this.activeDifficulty];
 
@@ -321,6 +348,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.jigsawService.setSeed(this.seed);
     this.jigsawService.setTabSize(this.tabSize);
     this.jigsawService.setJitter(this.jitter);
+
+    // 重置缩放比例
+    this.zoomScale = 1;
 
     // 使用JigsawService生成拼图块
     this.puzzlePieces = shuffle(
@@ -338,12 +368,29 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.connectedGroups = [];
 
     // 绘制拼图效果
-    this.drawPuzzle(canvas, ctx);
+    this.renderPuzzle(canvas, ctx);
+  }
+
+  private renderPuzzle(canvas?: HTMLCanvasElement, ctx?: CanvasRenderingContext2D) {
+    canvas = canvas || this.canvasRef.nativeElement;
+    ctx = ctx || canvas.getContext('2d') || undefined;
+
+    if (ctx) {
+      this.drawPuzzle(canvas, ctx);
+    }
   }
 
   private drawPuzzle(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
+    const centerX = this.canvasWidth / 2;
+    const centerY = this.canvasHeight / 2;
+
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+
+    ctx.translate(centerX, centerY);
+    ctx.scale(this.zoomScale, this.zoomScale);
+    ctx.translate(-centerX, -centerY);
 
     // 直接绘制每个拼图块
     this.puzzlePieces.forEach((piece) => {
@@ -358,7 +405,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       const path = new Path2D(piece.path);
       ctx.clip(path);
 
-      // 直接绘制缩放后的图像
+      // 绘制缩放后的图像
       ctx.drawImage(
         this.scaledImage!,
         0,
@@ -381,10 +428,26 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       ctx.translate(-piece.x, -piece.y);
       ctx.translate(piece.displayX, piece.displayY);
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1 / this.zoomScale;
       ctx.stroke(path);
       ctx.restore();
     });
+    ctx.restore();
+  }
+
+  private drawPreviewImage(previewCanvas: HTMLCanvasElement, previewCtx: CanvasRenderingContext2D) {
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    previewCtx.drawImage(
+      this.scaledImage!,
+      0,
+      0,
+      this.puzzleWidth,
+      this.puzzleHeight,
+      0,
+      0,
+      previewCanvas.width,
+      previewCanvas.height
+    );
   }
 
   // 在暂停状态下显示原始图片
@@ -424,24 +487,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     ctx.fillText(isStopped ? '游戏未开始' : '游戏已暂停', canvas.width / 2, canvas.height / 2);
   }
 
-  // 设置拖拽事件
-  private initDragEvents() {
-    const canvas = this.canvasRef.nativeElement;
-
-    canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-    canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
-    canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
-    canvas.addEventListener('mouseleave', this.handleMouseUp.bind(this));
-
-    // 触摸事件支持
-    canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
-    canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
-    canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
-  }
-
   // 处理鼠标按下事件
   private handleMouseDown(e: MouseEvent) {
-    // 只有在游戏进行中才允许拖动拼图块
+    // 只有在游戏进行中才允许拖动拼图块或画布
     if (this.gameStatus !== 'playing') {
       return;
     }
@@ -451,21 +499,34 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    this.checkPieceSelection(mouseX, mouseY);
+    // 尝试选择拼图块
+    const pieceSelected = this.checkPieceSelection(mouseX, mouseY);
+
+    // 如果没有选中拼图块，则进入画布拖拽模式
+    if (!pieceSelected) {
+      this.isCanvasDragging = true;
+      this.lastDragX = mouseX;
+      this.lastDragY = mouseY;
+    }
   }
 
   // 处理鼠标移动事件
   private handleMouseMove(e: MouseEvent) {
-    if (!this.isDragging || !this.selectedPiece) {
-      return;
-    }
-
     const canvas = this.canvasRef.nativeElement;
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    this.dragPiece(mouseX, mouseY);
+    // 拖拽拼图块
+    if (this.isDragging && this.selectedPiece) {
+      this.dragPiece(mouseX, mouseY);
+      return;
+    }
+
+    // 拖拽画布
+    if (this.isCanvasDragging) {
+      this.dragCanvas(mouseX, mouseY);
+    }
   }
 
   // 处理鼠标释放事件
@@ -476,22 +537,20 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       this.checkForSnapping(selectedGroup || [this.selectedPiece]);
 
       // 重绘拼图以显示吸附效果
-      const canvas = this.canvasRef.nativeElement;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        this.drawPuzzle(canvas, ctx);
-      }
+      this.renderPuzzle();
     }
 
+    // 重置拖拽状态
     this.isDragging = false;
     this.selectedPiece = null;
+    this.isCanvasDragging = false;
   }
 
   // 处理触摸开始事件
   private handleTouchStart(e: TouchEvent) {
     e.preventDefault();
 
-    // 只有在游戏进行中才允许拖动拼图块
+    // 只有在游戏进行中才允许拖动拼图块或画布
     if (this.gameStatus !== 'playing') {
       return;
     }
@@ -502,16 +561,20 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const touchX = touch.clientX - rect.left;
     const touchY = touch.clientY - rect.top;
 
-    this.checkPieceSelection(touchX, touchY);
+    // 尝试选择拼图块
+    const pieceSelected = this.checkPieceSelection(touchX, touchY);
+
+    // 如果没有选中拼图块，则进入画布拖拽模式
+    if (!pieceSelected) {
+      this.isCanvasDragging = true;
+      this.lastDragX = touchX;
+      this.lastDragY = touchY;
+    }
   }
 
   // 处理触摸移动事件
   private handleTouchMove(e: TouchEvent) {
     e.preventDefault();
-
-    if (!this.isDragging || !this.selectedPiece) {
-      return;
-    }
 
     const canvas = this.canvasRef.nativeElement;
     const rect = canvas.getBoundingClientRect();
@@ -519,7 +582,16 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const touchX = touch.clientX - rect.left;
     const touchY = touch.clientY - rect.top;
 
-    this.dragPiece(touchX, touchY);
+    // 拖拽拼图块
+    if (this.isDragging && this.selectedPiece) {
+      this.dragPiece(touchX, touchY);
+      return;
+    }
+
+    // 拖拽画布
+    if (this.isCanvasDragging) {
+      this.dragCanvas(touchX, touchY);
+    }
   }
 
   // 处理触摸结束事件
@@ -532,15 +604,33 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       this.checkForSnapping(selectedGroup || [this.selectedPiece]);
 
       // 重绘拼图以显示吸附效果
-      const canvas = this.canvasRef.nativeElement;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        this.drawPuzzle(canvas, ctx);
-      }
+      this.renderPuzzle();
     }
 
+    // 重置拖拽状态
     this.isDragging = false;
     this.selectedPiece = null;
+    this.isCanvasDragging = false;
+  }
+
+  // 处理鼠标滚轮事件
+  private handleWheel(e: WheelEvent) {
+    // 只有在游戏进行中才允许缩放
+    if (this.gameStatus !== 'playing') {
+      return;
+    }
+
+    // 阻止默认滚动行为
+    e.preventDefault();
+
+    // 根据滚轮方向决定放大或缩小
+    if (e.deltaY < 0) {
+      // 向上滚动，放大
+      this.zoom();
+    } else {
+      // 向下滚动，缩小
+      this.zoom(false);
+    }
   }
 
   // 监听页面可见性变化
@@ -551,27 +641,28 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // 开始计时器
-  private startTimer() {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
+  // 拖拽画布
+  private dragCanvas(x: number, y: number) {
+    if (!this.isCanvasDragging) {
+      return;
     }
 
-    this.lastTimestamp = Date.now();
-    this.timerInterval = setInterval(() => {
-      const now = Date.now();
-      const elapsed = Math.floor((now - this.lastTimestamp) / 1000);
-      this.lastTimestamp = now;
-      this.gameTime += elapsed;
-    }, 1000);
-  }
+    // 计算拖拽偏移量
+    const deltaX = x - this.lastDragX;
+    const deltaY = y - this.lastDragY;
 
-  // 停止计时器
-  private stopTimer() {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
+    // 更新所有拼图块的位置
+    this.puzzlePieces.forEach((piece) => {
+      piece.displayX += deltaX;
+      piece.displayY += deltaY;
+    });
+
+    // 更新上次拖拽位置
+    this.lastDragX = x;
+    this.lastDragY = y;
+
+    // 重绘拼图
+    this.renderPuzzle();
   }
 
   // 拖动拼图块
@@ -586,13 +677,29 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    // 计算新位置，确保在canvas边界内
-    let newX = x - this.dragOffsetX;
-    let newY = y - this.dragOffsetY;
+    // 计算缩放后的坐标
+    const centerX = this.canvasWidth / 2;
+    const centerY = this.canvasHeight / 2;
+    // 将鼠标坐标转换为缩放前的坐标系
+    const scaledX = (x - centerX) / this.zoomScale + centerX;
+    const scaledY = (y - centerY) / this.zoomScale + centerY;
 
-    // 边界检查
-    newX = Math.max(0, Math.min(canvas.width - this.selectedPiece.width, newX));
-    newY = Math.max(0, Math.min(canvas.height - this.selectedPiece.height, newY));
+    // 计算新位置，考虑缩放因素
+    let newX = scaledX - this.dragOffsetX / this.zoomScale;
+    let newY = scaledY - this.dragOffsetY / this.zoomScale;
+
+    // 边界检查，考虑缩放因素
+    // 在缩放后，边界检查需要考虑可视区域的变化
+    const visibleWidth = canvas.width / this.zoomScale;
+    const visibleHeight = canvas.height / this.zoomScale;
+    const minX = centerX - visibleWidth / 2;
+    const minY = centerY - visibleHeight / 2;
+    const maxX = centerX + visibleWidth / 2 - this.selectedPiece.width;
+    const maxY = centerY + visibleHeight / 2 - this.selectedPiece.height;
+
+    // 调整边界检查，确保拼图块在可视区域内
+    newX = Math.max(minX, Math.min(maxX, newX));
+    newY = Math.max(minY, Math.min(maxY, newY));
 
     // 计算移动的偏移量
     const deltaX = newX - this.selectedPiece.displayX;
@@ -617,7 +724,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // this.checkForSnapping(selectedGroup || [this.selectedPiece]);
 
     // 重绘拼图
-    this.drawPuzzle(canvas, ctx);
+    this.renderPuzzle(canvas, ctx);
   }
 
   // 查找拼图块所在的连接组
@@ -640,6 +747,9 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     const { rows, cols } = this.difficultyLevels[this.activeDifficulty];
     const pieceWidth = this.puzzleWidth / cols;
     const pieceHeight = this.puzzleHeight / rows;
+
+    // 根据缩放比例调整吸附阈值
+    const adjustedSnapThreshold = this.snapThreshold / this.zoomScale;
 
     // 遍历所有拼图块，检查是否可以拼接
     const movingIds = movingPieces.map((p) => p.id);
@@ -689,8 +799,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
             Math.pow(movingPiece.displayX - idealX, 2) + Math.pow(movingPiece.displayY - idealY, 2)
           );
 
-          // 如果距离小于阈值，触发吸附
-          if (distance < this.snapThreshold) {
+          // 如果距离小于调整后的阈值，触发吸附
+          if (distance < adjustedSnapThreshold) {
             // 计算需要移动的偏移量
             const offsetX = idealX - movingPiece.displayX;
             const offsetY = idealY - movingPiece.displayY;
@@ -760,11 +870,18 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   // 检查是否选中拼图块
-  private checkPieceSelection(x: number, y: number) {
+  private checkPieceSelection(x: number, y: number): boolean {
     const ctx = this.canvasRef.nativeElement.getContext('2d');
     if (!ctx) {
-      return;
+      return false;
     }
+
+    // 计算缩放后的坐标
+    const centerX = this.canvasWidth / 2;
+    const centerY = this.canvasHeight / 2;
+    // 将鼠标坐标转换为缩放前的坐标系
+    const scaledX = (x - centerX) / this.zoomScale + centerX;
+    const scaledY = (y - centerY) / this.zoomScale + centerY;
 
     // 从后向前检查（后绘制的在上层）
     for (let i = this.puzzlePieces.length - 1; i >= 0; i--) {
@@ -772,7 +889,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       // 创建路径并检查点是否在路径内
       const path = new Path2D(piece.path);
 
-      if (ctx.isPointInPath(path, x + piece.x - piece.displayX, y + piece.y - piece.displayY)) {
+      // 使用缩放后的坐标检查点是否在路径内
+      if (ctx.isPointInPath(path, scaledX + piece.x - piece.displayX, scaledY + piece.y - piece.displayY)) {
         // 将选中的拼图块及其所在组移到数组末尾（显示在最上层）
         const group = this.findConnectedGroup(piece);
 
@@ -791,13 +909,39 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
         this.isDragging = true;
         this.selectedPiece = piece;
-        this.dragOffsetX = x - piece.displayX;
-        this.dragOffsetY = y - piece.displayY;
+        // 调整拖拽偏移量，考虑缩放因素
+        this.dragOffsetX = (scaledX - piece.displayX) * this.zoomScale;
+        this.dragOffsetY = (scaledY - piece.displayY) * this.zoomScale;
 
         // 重绘拼图
-        this.drawPuzzle(this.canvasRef.nativeElement, ctx);
-        break;
+        this.renderPuzzle(this.canvasRef.nativeElement, ctx);
+        return true;
       }
+    }
+
+    return false;
+  }
+
+  // 开始计时器
+  private startTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+
+    this.lastTimestamp = Date.now();
+    this.timerInterval = window.setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - this.lastTimestamp) / 1000);
+      this.lastTimestamp = now;
+      this.gameTime += elapsed;
+    }, 1000);
+  }
+
+  // 停止计时器
+  private stopTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
     }
   }
 }

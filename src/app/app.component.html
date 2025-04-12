@@ -28,6 +28,15 @@
               nzType="default"
               *ngIf="gameStatus !== 'ready'"
               (click)="restartGame()">重新开始</button>
+      <!-- 缩放控制按钮 -->
+      <div class="zoom-controls" *ngIf="gameStatus === 'playing'">
+        <button nz-button nzType="default" (click)="zoom()">
+          <nz-icon nzType="zoom-in" /><span>放大</span>
+        </button>
+        <button nz-button nzType="default" (click)="zoom(false)">
+          <nz-icon nzType="zoom-out" /><span>缩小</span>
+        </button>
+      </div>
       <div class="completion-message" *ngIf="gameStatus === 'completed'">
         <span>恭喜完成！用时：{{ formatTime(gameTime) }}</span>
       </div>
