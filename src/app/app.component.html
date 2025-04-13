@@ -1,7 +1,7 @@
 <main class="puzzle">
   <div class="puzzle-control">
     <div class="puzzle-preview">
-      <canvas #puzzleImage [attr.width]="210" [attr.height]="140" (click)="showFullImage()"></canvas>
+      <canvas #previewCanvas [attr.width]="210" [attr.height]="140" (click)="showFullImage()"></canvas>
     </div>
     <div class="puzzle-difficulty">
       <label>难度: </label>
@@ -16,7 +16,7 @@
     <div class="puzzle-timer">
       <div class="timer-display">{{ formatTime(gameTime) }}</div>
     </div>
-    <div class="puzzle-controls">
+    <div class="puzzle-actions">
       <button nz-button nzType="primary" *ngIf="gameStatus === 'ready'" (click)="startGame()">开始游戏</button>
       <button nz-button nzType="primary" *ngIf="gameStatus === 'playing'" (click)="pauseGame()">暂停</button>
       <button nz-button nzType="primary" *ngIf="gameStatus === 'paused'" (click)="resumeGame()">继续</button>
@@ -29,7 +29,7 @@
               *ngIf="gameStatus !== 'ready'"
               (click)="restartGame()">重新开始</button>
       <!-- 缩放控制按钮 -->
-      <div class="zoom-controls" *ngIf="gameStatus === 'playing'">
+      <div class="puzzle-zoom" *ngIf="gameStatus === 'playing'">
         <button nz-button nzType="default" (click)="zoom()">
           <nz-icon nzType="zoom-in" /><span>放大</span>
         </button>
@@ -37,7 +37,7 @@
           <nz-icon nzType="zoom-out" /><span>缩小</span>
         </button>
       </div>
-      <div class="completion-message" *ngIf="gameStatus === 'completed'">
+      <div class="puzzle-completion" *ngIf="gameStatus === 'completed'">
         <span>恭喜完成！用时：{{ formatTime(gameTime) }}</span>
       </div>
     </div>

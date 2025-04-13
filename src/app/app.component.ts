@@ -18,7 +18,7 @@ import { JigsawService } from './services/jigsaw.service';
   styleUrl: './app.component.less'
 })
 export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
-  @ViewChild('puzzleImage') imageRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('previewCanvas') previewRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('puzzleCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
   // 画布尺寸
@@ -34,7 +34,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   };
   // 当前难度级别
   activeDifficulty: JigsawDifficulty = 'medium';
-  puzzleImage = 'https://cn.bing.com/th?id=OHR.SummerSolstice2024_ZH-CN6141918663_1920x1080.jpg';
   // 游戏状态相关
   gameStatus: GameStatus = 'ready';
   gameTime = 0; // 游戏时间（秒）
@@ -46,12 +45,15 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     }));
   }
 
+  private puzzleImage = 'https://cn.bing.com/th?id=OHR.SummerSolstice2024_ZH-CN6141918663_1920x1080.jpg';
   // 原图尺寸
   private wallpaperWidth = 1920;
   private wallpaperHeight = 1080;
+  private wallpaperRatio = this.wallpaperWidth / this.wallpaperHeight;
   // 拼图尺寸
   private puzzleWidth = 900;
   private puzzleHeight = 600;
+  private puzzleRatio = this.puzzleWidth / this.puzzleHeight;
   // 拼图块数组
   private puzzlePieces: JigsawPiece[] = [];
   // 原始图片
@@ -71,7 +73,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   private isCanvasDragging = false;
   private lastDragX = 0;
   private lastDragY = 0;
-  // 拼图拼接相关
+  // 拼接相关
   private snapThreshold = 16; // 吸附阈值（像素）
   private connectedGroups: JigsawPiece[][] = []; // 已连接的拼图块组
   // 计时器相关
@@ -229,25 +231,19 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private getImageSize(canvas: HTMLCanvasElement) {
-    // 计算居中裁剪的参数
-    const imgWidth = this.wallpaperWidth;
-    const imgHeight = this.wallpaperHeight;
-    const imgRatio = imgWidth / imgHeight; // 16:9 = 1.78
-    const canvasRatio = canvas.width / canvas.height; // 3:2 = 1.5
-
     let sourceX = 0;
     let sourceY = 0;
-    let sourceWidth = imgWidth;
-    let sourceHeight = imgHeight;
+    let sourceWidth = this.wallpaperWidth;
+    let sourceHeight = this.wallpaperHeight;
 
-    if (imgRatio > canvasRatio) {
+    if (this.wallpaperRatio > this.puzzleRatio) {
       // 如果图片比例大于画布比例，需要裁剪图片宽度
-      sourceWidth = imgHeight * canvasRatio;
-      sourceX = (imgWidth - sourceWidth) / 2;
+      sourceWidth = this.wallpaperHeight * this.puzzleRatio;
+      sourceX = (this.wallpaperWidth - sourceWidth) / 2;
     } else {
       // 如果图片比例小于画布比例，需要裁剪图片高度
-      sourceHeight = imgWidth / canvasRatio;
-      sourceY = (imgHeight - sourceHeight) / 2;
+      sourceHeight = this.wallpaperWidth / this.puzzleRatio;
+      sourceY = (this.wallpaperHeight - sourceHeight) / 2;
     }
 
     return {
@@ -260,7 +256,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private initCanvas() {
     const canvas = this.canvasRef.nativeElement;
-    const previewCanvas = this.imageRef.nativeElement;
+    const previewCanvas = this.previewRef.nativeElement;
     if (!canvas || !previewCanvas) {
       return;
     }
@@ -352,7 +348,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // 重置缩放比例
     this.zoomScale = 1;
 
-    // 使用JigsawService生成拼图块
+    // 生成拼图块
     this.puzzlePieces = shuffle(
       this.jigsawService.generatePuzzlePieces(
         this.canvasWidth,
@@ -367,7 +363,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // 重置连接组
     this.connectedGroups = [];
 
-    // 绘制拼图效果
+    // 绘制拼图
     this.renderPuzzle(canvas, ctx);
   }
 
@@ -387,7 +383,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     // 清空画布
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-
+    // 缩放
     ctx.translate(centerX, centerY);
     ctx.scale(this.zoomScale, this.zoomScale);
     ctx.translate(-centerX, -centerY);
@@ -417,8 +413,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
         this.puzzleWidth,
         this.puzzleHeight
       );
-      // ctx.fillStyle = 'rgba(255, 0, 0, 0.4)';
-      // ctx.fill(path);
 
       // 恢复绘图状态
       ctx.restore();
@@ -432,6 +426,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       ctx.stroke(path);
       ctx.restore();
     });
+
     ctx.restore();
   }
 
@@ -522,7 +517,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       this.dragPiece(mouseX, mouseY);
       return;
     }
-
     // 拖拽画布
     if (this.isCanvasDragging) {
       this.dragCanvas(mouseX, mouseY);
@@ -534,8 +528,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.isDragging && this.selectedPiece) {
       // 在松开鼠标时检查吸附
       const selectedGroup = this.findConnectedGroup(this.selectedPiece);
-      this.checkForSnapping(selectedGroup || [this.selectedPiece]);
 
+      this.checkForSnapping(selectedGroup || [this.selectedPiece]);
       // 重绘拼图以显示吸附效果
       this.renderPuzzle();
     }
@@ -587,7 +581,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       this.dragPiece(touchX, touchY);
       return;
     }
-
     // 拖拽画布
     if (this.isCanvasDragging) {
       this.dragCanvas(touchX, touchY);
@@ -601,8 +594,8 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.isDragging && this.selectedPiece) {
       // 在触摸结束时检查吸附
       const selectedGroup = this.findConnectedGroup(this.selectedPiece);
-      this.checkForSnapping(selectedGroup || [this.selectedPiece]);
 
+      this.checkForSnapping(selectedGroup || [this.selectedPiece]);
       // 重绘拼图以显示吸附效果
       this.renderPuzzle();
     }
@@ -719,9 +712,6 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
       this.selectedPiece.displayX = newX;
       this.selectedPiece.displayY = newY;
     }
-
-    // 移除在拖动过程中的吸附检测
-    // this.checkForSnapping(selectedGroup || [this.selectedPiece]);
 
     // 重绘拼图
     this.renderPuzzle(canvas, ctx);
@@ -915,6 +905,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
 
         // 重绘拼图
         this.renderPuzzle(this.canvasRef.nativeElement, ctx);
+
         return true;
       }
     }
@@ -932,6 +923,7 @@ export class AppComponent implements OnInit, AfterViewInit, OnDestroy {
     this.timerInterval = window.setInterval(() => {
       const now = Date.now();
       const elapsed = Math.floor((now - this.lastTimestamp) / 1000);
+
       this.lastTimestamp = now;
       this.gameTime += elapsed;
     }, 1000);
