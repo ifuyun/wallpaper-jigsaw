@@ -5,6 +5,7 @@ export interface JigsawDifficultyItem {
   rows: number;
   cols: number;
   label: string;
+  name?: JigsawDifficulty;
 }
 
 export interface JigsawPiecePath {

@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { JigsawPiece, JigsawPiecePath } from '../interfaces/jigsaw.interface';
+import { JigsawPiece, JigsawPiecePath } from './jigsaw.interface';
 
 @Injectable({
   providedIn: 'root'
